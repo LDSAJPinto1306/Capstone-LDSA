@@ -2,6 +2,7 @@ import os
 import json
 import joblib
 import pandas as pd
+import pickle
 from flask import Flask, jsonify, request
 from peewee import (
     Model, BooleanField, CharField,
@@ -38,7 +39,7 @@ logger = get_logger()
 DB = connect(os.environ.get('DATABASE_URL') or 'sqlite:///predictions.db')
 
 class Prediction(Model):
-    observation_id = CharField(primary_key=True, max_length=50)
+    id = CharField(primary_key=True, max_length=50)
     observation = TextField()
     pred_class = BooleanField()
     true_class = BooleanField(null=True)
@@ -50,10 +51,50 @@ class Prediction(Model):
 DB.create_tables([Prediction], safe=True)
 
 
-with open('columns.json') as fh:
-    columns = json.load(fh)
+########################################
+# Unpickle the previously-trained model
 
 pipeline = joblib.load('pipeline.pickle')
+
+#with open('dtypes.pickle', 'rb') as fh:
+#    dtypes = pickle.load(fh)
+
+
+# End model un-pickling
+########################################
+
+
+# Manually Setting the Columns to be Recieved
+columns = [
+    "id",
+    "name",
+    "sex",
+    "dob",
+    "race",
+    "juv_fel_count", 
+    "juv_misd_count",
+    "juv_other_count",
+    "priors_count",
+    "c_case_number",
+    "c_charge_degree",
+    "c_charge_desc",
+    "c_offense_date",
+    "c_arrest_date",
+    "c_jail_in",
+    "is_recid",
+    "r_case_number",
+    "r_charge_degree",
+    "r_charge_desc",
+    "r_offense_date",
+    "is_violent_recid",
+    "vr_case_number",
+    "vr_offense_date",
+    "vr_charge_degree",
+    "vr_charge_desc",
+
+]
+
+########################################
 
 app = Flask(__name__)
 
@@ -64,39 +105,40 @@ def process_observation(observation):
     return observation
 
 
-@app.route('/predict', methods=['POST'])
+@app.route('/will_recidivate', methods=['POST'])
 def predict():
     obs_dict = request.get_json()
     logger.info('Observation: %s', obs_dict)
-    _id = obs_dict['observation_id']
+    _id = obs_dict['id']
     observation = obs_dict
 
     if not _id:
         logger.warning('Returning error: no id provided')
-        return jsonify({'error': 'observation_id is required'}), 400
-    if Prediction.select().where(Prediction.observation_id == _id).exists():
-        prediction = Prediction.get(Prediction.observation_id == _id)
+        return jsonify({'error': 'id is required'}), 400
+    if Prediction.select().where(Prediction.id == _id).exists():
+        prediction = Prediction.get(Prediction.id == _id)
 
         # Update the prediction
         prediction.observation = str(observation)
         prediction.save()
 
         logger.warning('Returning error: already exists id %s', _id)
-        return jsonify({'error': 'observation_id already exists'}), 400
+        return jsonify({'error': 'id already exists'}), 400
 
     try:
         obs = pd.DataFrame([observation], columns=columns)
+        
     except ValueError as e:
         logger.error('Returning error: %s', str(e), exc_info=True)
-        default_response = {'observation_id': _id, 'label': False}
+        default_response = {'id': _id, 'outcome': False}
         return jsonify(default_response), 200
     
-    label = bool(pipeline.predict(obs))
-    response = {'observation_id': _id, 'label': label}
+    outcome = bool(pipeline.predict(obs))
+    response = {'id': _id, 'outcome': outcome}
     p = Prediction(
-        observation_id=_id,
+        id=_id,
         observation=request.data,
-        pred_class=label,
+        pred_class=outcome,
     )
     p.save()
     logger.info('Saved: %s', model_to_dict(p))
@@ -105,28 +147,28 @@ def predict():
     return jsonify(response)
 
 
-@app.route('/update', methods=['POST'])
+@app.route('/recidivism_result', methods=['POST'])
 def update():
     obs = request.get_json()
     logger.info('Observation:', obs)
-    _id = obs['observation_id']
-    label = obs['label']
+    _id = obs['id']
+    outcome = obs['outcome']
 
     if not _id:
         logger.warning('Returning error: no id provided')
-        return jsonify({'error': 'observation_id is required'}), 400
-    if not Prediction.select().where(Prediction.observation_id == _id).exists():
-        logger.warning(f'Returning error: id {_id} does not exist in the database')
-        return jsonify({'error': 'observation_id does not exist'}), 400
+        return jsonify({'error': 'id is required'}), 400
     
-    p = Prediction.get(Prediction.observation_id == _id)
-    p.true_class = label
+    if not Prediction.select().where(Prediction.id == _id).exists():
+        logger.warning(f'Returning error: id {_id} does not exist in the database')
+        return jsonify({'error': 'id does not exist'}), 400
+    
+    p = Prediction.get(Prediction.id == _id)
+    p.true_class = outcome
     p.save()
     logger.info('Updated: %s', model_to_dict(p))
 
-    response = {'observation_id': _id, 'label': label}
+    response = {'id': _id, 'outcome': outcome,'predicted_outcome': p.pred_class}
     return jsonify(response)
-
 
 
 @app.route('/list-db-contents')
@@ -136,4 +178,4 @@ def list_db_contents():
     ])
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True, port=8000)
+    app.run(host='0.0.0.0', debug=True, port=5000)
