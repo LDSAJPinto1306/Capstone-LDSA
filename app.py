@@ -11,6 +11,7 @@ from peewee import (
 from playhouse.shortcuts import model_to_dict
 from playhouse.db_url import connect
 import logging
+import datetime
 
 
 class CustomRailwayLogFormatter(logging.Formatter):
@@ -101,16 +102,18 @@ app = Flask(__name__)
 
 def process_observation(observation):
     logger.info("Processing observation, %s", observation)
+    
+    observation['c_jail_out'] = datetime.datetime.now()
     # A lot of processing
     return observation
 
 
-@app.route('/will_recidivate', methods=['POST'])
+@app.route('/will_recidivate/', methods=['POST'])
 def predict():
     obs_dict = request.get_json()
     logger.info('Observation: %s', obs_dict)
     _id = obs_dict['id']
-    observation = obs_dict
+    observation = process_observation(obs_dict)
 
     if not _id:
         logger.warning('Returning error: no id provided')
@@ -126,6 +129,8 @@ def predict():
         return jsonify({'error': 'id already exists'}), 400
 
     try:
+        observation['c_jail_time'] = None  # Will be calculated by CalculateJailTime transformer    
+        
         obs = pd.DataFrame([observation], columns=columns)
         
     except ValueError as e:
