@@ -71,7 +71,7 @@ def process_observation(observation):
 def predict():
     obs_dict = request.get_json()
     logger.info('Received observation: %s', obs_dict)
-    _id = obs_dict.get('id')
+    _id = str(obs_dict.get('id'))
 
     if not _id:
         logger.warning('No id provided in request')
@@ -94,14 +94,11 @@ def predict():
     # Make prediction using the model
     outcome = bool(pipeline.predict(obs_df))
     response = {'id': _id, 'outcome': outcome}
-
+    
     # Save prediction to database
-    p = Prediction(
-    observation_id=_id,
-    pred_class=outcome,
-    observation=obs_dict
-    )
-
+    p = Prediction(id=_id,pred_class=outcome,observation=json.dumps(obs_dict))
+    logger.info('Stored Prediction %s',p)
+    p.save()
 
     return jsonify(response)
 
@@ -134,20 +131,10 @@ def update():
 # Endpoint to list database contents
 @app.route('/list-db-contents')
 def list_db_contents():
-    try:
-        data = [model_to_dict(obs) for obs in Prediction.select()]
-        logger.info('Current DB contents: %s', data)
-        return jsonify(data)
-    except Exception as e:
-        logger.error('Error fetching data from DB: %s', str(e))
-        return jsonify({'error': 'Failed to fetch data from DB'}), 500
+    return jsonify([
+        model_to_dict(obs) for obs in Prediction.select()
+    ])
 
-# Endpoint to verify database contents
-@app.route('/verify')
-def verify():
-    data = [model_to_dict(obs) for obs in Prediction.select()]
-    logger.info('Verifying DB contents: %s', data)
-    return jsonify(data)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', debug=True, port=8000)
