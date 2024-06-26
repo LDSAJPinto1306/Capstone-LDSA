@@ -26,7 +26,7 @@ DB = connect(os.environ.get('DATABASE_URL') or 'sqlite:///predictions.db')
 
 # Define Prediction model
 class Prediction(Model):
-    id = TextField(unique=True)
+    obs_id = TextField(unique=True)
     observation = TextField()
     pred_class = BooleanField()
     true_class = BooleanField(null=True)
@@ -71,9 +71,9 @@ def process_observation(observation):
 def predict():
     obs_dict = request.get_json()
     logger.info('Received observation: %s', obs_dict)
-    obs_id = obs_dict.get('id')
+    _id = obs_dict.get('id')
 
-    if not obs_id:
+    if not _id:
         logger.warning('No id provided in request')
         return jsonify({'error': 'id is required'}), 400
 
@@ -81,8 +81,8 @@ def predict():
     observation = process_observation(obs_dict)
 
     # Check if the ID already exists in the database
-    if Prediction.select().where(Prediction.id == obs_id).exists():
-        logger.warning('ID %s already exists in the database', obs_id)
+    if Prediction.select().where(Prediction.obs_id == _id).exists():
+        logger.warning('ID %s already exists in the database', _id)
         return jsonify({'error': 'id already exists'}), 400
 
     try:
@@ -93,10 +93,10 @@ def predict():
 
     # Make prediction using the model
     outcome = bool(pipeline.predict(obs_df))
-    response = {'id': obs_id, 'outcome': outcome}
+    response = {'id': _id, 'outcome': outcome}
     
     # Save prediction to database
-    p = Prediction(id=obs_id,pred_class=outcome,observation=json.dumps(obs_dict))
+    p = Prediction(obs_id=_id,pred_class=outcome,observation=json.dumps(obs_dict))
     try:
         p.save()
         logger.info('Stored Prediction %s',p)
@@ -112,25 +112,25 @@ def predict():
 def update():
     obs = request.get_json()
     logger.info('Received update request: %s', obs)
-    obs_id = obs.get('id')
+    _id = obs.get('id')
     outcome = obs.get('outcome')
 
-    if not obs_id:
+    if not _id:
         logger.warning('No id provided in request')
         return jsonify({'error': 'id is required'}), 400
 
     # Check if the ID exists in the database
-    if not Prediction.select().where(Prediction.id == obs_id).exists():
-        logger.warning('ID %s does not exist in the database', obs_id)
+    if not Prediction.select().where(Prediction.obs_id == _id).exists():
+        logger.warning('ID %s does not exist in the database', _id)
         return jsonify({'error': 'id does not exist'}), 400
 
     # Update true class
-    p = Prediction.get(Prediction.id == obs_id)
+    p = Prediction.get(Prediction.obs_id == _id)
     p.true_class = outcome
     p.save()
-    logger.info('Updated true class for ID %s', obs_id)
+    logger.info('Updated true class for ID %s', _id)
 
-    response = {'id': obs_id, 'outcome': outcome, 'predicted_outcome': p.pred_class}
+    response = {'id': _id, 'outcome': outcome, 'predicted_outcome': p.pred_class}
     return jsonify(response)
 
 # Endpoint to list database contents
