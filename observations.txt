@@ -50,8 +50,19 @@
 
 
 
-curl -v -X POST http://localhost:8000/will_recidivate/ -H "Content-Type: application/json" -d '{"id": "7000000000", "name": "willie gray", "sex": "Male", "dob": "1959-01-12", "race": "African-American", "juv_fel_count": 0, "juv_misd_count": 0, "juv_other_count": 0, "priors_count": 8, "c_case_number": "14040148MU10A", "c_charge_degree": "M", "c_charge_desc": "DUI Level 0.15 Or Minor In Veh", "c_offense_date": "2014-10-30", "c_arrest_date": null, "c_jail_in": "2014-10-31 12:02:01"}'
+curl -v -X POST http://localhost:8000/will_recidivate/ -H "Content-Type: application/json" -d '{"id": "70000000541", "name": "willie gray", "sex": "Male", "dob": "1959-01-12", "race": "African-American", "juv_fel_count": 0, "juv_misd_count": 0, "juv_other_count": 0, "priors_count": 8, "c_case_number": "14040148MU10A", "c_charge_degree": "M", "c_charge_desc": "DUI Level 0.15 Or Minor In Veh", "c_offense_date": "2014-10-30", "c_arrest_date": null, "c_jail_in": "2014-10-31 12:02:01"}'
 curl -v -X POST http://localhost:8000/will_recidivate/ -H "Content-Type: application/json" -d '{ "name": "willie gray", "sex": "Male", "dob": "1959-01-12", "race": "African-American", "juv_fel_count": 0, "juv_misd_count": 0, "juv_other_count": 0, "priors_count": 8, "c_case_number": "14040148MU10A", "c_charge_degree": "M", "c_charge_desc": "DUI Level 0.15 Or Minor In Veh", "c_offense_date": "2014-10-30", "c_arrest_date": null, "c_jail_in": "2014-10-31 12:02:01"}'
 curl -X POST http://localhost:8000/recidivism_result -H "Content-Type: application/json" -d '{"id": "3", "name": "willie gray", "sex": "Male", "dob": "1959-01-12", "race": "African-American", "juv_fel_count": 0, "juv_misd_count": 0, "juv_other_count": 0, "priors_count": 8, "c_case_number": "14040148MU10A", "c_charge_degree": "M", "c_charge_desc": "DUI Level 0.15 Or Minor In Veh", "c_offense_date": "2014-10-30", "c_arrest_date": null, "c_jail_in": "2014-10-31 12:02:01"}'
 
 curl http://localhost:8000/list-db-contents
+
+curl -v -X POST https://capstone-ldsa-jpinto-production.up.railway.app/will_recidivate/ -H "Content-Type: application/json" -d '{"id": "7000000000", "name": "willie gray", "sex": "Male", "dob": "1959-01-12", "race": "African-American", "juv_fel_count": 0, "juv_misd_count": 0, "juv_other_count": 0, "priors_count": 8, "c_case_number": "14040148MU10A", "c_charge_degree": "M", "c_charge_desc": "DUI Level 0.15 Or Minor In Veh", "c_offense_date": "2014-10-30", "c_arrest_date": null, "c_jail_in": "2014-10-31 12:02:01"}'
+curl -X POST https://capstone-ldsa-jpinto-production.up.railway.app/recidivism_result -H "Content-Type: application/json" -d '{"id": "7000000000", "outcome": true}'
+curl -v -X GET https://capstone-ldsa-jpinto-production.up.railway.app/list-db-contents
+
+
+postgresql://postgres:cWnrieyaMKcriTOnktdNItlKBbjihxWa@roundhouse.proxy.rlwy.net:33052/railway
+postgresql://postgres:cWnrieyaMKcriTOnktdNItlKBbjihxWa@roundhouse.proxy.rlwy.net:33052/railway
+
+
+
