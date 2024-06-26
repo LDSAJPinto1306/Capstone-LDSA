@@ -4,41 +4,27 @@ import joblib
 import pandas as pd
 import pickle
 from flask import Flask, jsonify, request
-from peewee import (
-    Model, BooleanField, CharField,
-    TextField
-)
+from peewee import Model, BooleanField, CharField, TextField
 from playhouse.shortcuts import model_to_dict
 from playhouse.db_url import connect
 import logging
 import datetime
 
+# Initialize Flask app
+app = Flask(__name__)
 
-class CustomRailwayLogFormatter(logging.Formatter):
-    def format(self, record):
-        log_record = {
-            "time": self.formatTime(record),
-            "level": record.levelname,
-            "message": record.getMessage()
-        }
-        return json.dumps(log_record)
-    
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
-def get_logger():
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO) # this should be just "logger.setLevel(logging.INFO)" but markdown is interpreting it wrong here...
-    handler = logging.StreamHandler()
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    formatter = CustomRailwayLogFormatter()
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    return logger
-
-logger = get_logger()
-
+# Connect to database
 DB = connect(os.environ.get('DATABASE_URL') or 'sqlite:///predictions.db')
 
+# Define Prediction model
 class Prediction(Model):
     id = CharField(primary_key=True, max_length=50)
     observation = TextField()
@@ -48,24 +34,13 @@ class Prediction(Model):
     class Meta:
         database = DB
 
-
+# Create tables if not exists
 DB.create_tables([Prediction], safe=True)
 
-
-########################################
-# Unpickle the previously-trained model
-
+# Load machine learning model
 pipeline = joblib.load('pipeline.pickle')
 
-#with open('dtypes.pickle', 'rb') as fh:
-#    dtypes = pickle.load(fh)
-
-
-# End model un-pickling
-########################################
-
-
-# Manually Setting the Columns to be Recieved
+# Define columns expected in incoming data
 columns = [
     "id",
     "name",
@@ -82,105 +57,94 @@ columns = [
     "c_offense_date",
     "c_arrest_date",
     "c_jail_in",
-    "is_recid",
-    "r_case_number",
-    "r_charge_degree",
-    "r_charge_desc",
-    "r_offense_date",
-    "is_violent_recid",
-    "vr_case_number",
-    "vr_offense_date",
-    "vr_charge_degree",
-    "vr_charge_desc",
-
+    "is_recid",  # Ensure this matches the key in incoming JSON
 ]
 
-########################################
-
-app = Flask(__name__)
-
-
+# Function to process observation (customize as per your requirements)
 def process_observation(observation):
-    logger.info("Processing observation, %s", observation)
-    
-    observation['c_jail_out'] = datetime.datetime.now()
-    # A lot of processing
+    logger.info("Processing observation: %s", observation)
+    # Additional processing logic can go here
     return observation
 
-
+# Endpoint for making predictions
 @app.route('/will_recidivate/', methods=['POST'])
 def predict():
     obs_dict = request.get_json()
-    logger.info('Observation: %s', obs_dict)
-    _id = obs_dict['id']
-    observation = process_observation(obs_dict)
+    logger.info('Received observation: %s', obs_dict)
+    _id = obs_dict.get('id')
 
     if not _id:
-        logger.warning('Returning error: no id provided')
+        logger.warning('No id provided in request')
         return jsonify({'error': 'id is required'}), 400
+
+    # Process the observation
+    observation = process_observation(obs_dict)
+
+    # Check if the ID already exists in the database
     if Prediction.select().where(Prediction.id == _id).exists():
-        prediction = Prediction.get(Prediction.id == _id)
-
-        # Update the prediction
-        prediction.observation = str(observation)
-        prediction.save()
-
-        logger.warning('Returning error: already exists id %s', _id)
+        logger.warning('ID %s already exists in the database', _id)
         return jsonify({'error': 'id already exists'}), 400
 
     try:
-        observation['c_jail_time'] = None  # Will be calculated by CalculateJailTime transformer    
-        
-        obs = pd.DataFrame([observation], columns=columns)
-        
+        obs_df = pd.DataFrame([observation], columns=columns)
     except ValueError as e:
-        logger.error('Returning error: %s', str(e), exc_info=True)
-        default_response = {'id': _id, 'outcome': False}
-        return jsonify(default_response), 200
-    
-    outcome = bool(pipeline.predict(obs))
+        logger.error('ValueError occurred: %s', str(e))
+        return jsonify({'error': str(e)}), 400
+
+    # Make prediction using the model
+    outcome = bool(pipeline.predict(obs_df))
     response = {'id': _id, 'outcome': outcome}
-    p = Prediction(
-        id=_id,
-        observation=request.data,
-        pred_class=outcome,
-    )
+
+    # Save prediction to database
+    p = Prediction(id=_id, observation=json.dumps(obs_dict), pred_class=outcome)
     p.save()
-    logger.info('Saved: %s', model_to_dict(p))
-    logger.info('Prediction: %s', response)
+    logger.info('Saved prediction for ID %s', _id)
 
     return jsonify(response)
 
-
+# Endpoint for updating true class
 @app.route('/recidivism_result', methods=['POST'])
 def update():
     obs = request.get_json()
-    logger.info('Observation:', obs)
-    _id = obs['id']
-    outcome = obs['outcome']
+    logger.info('Received update request: %s', obs)
+    _id = obs.get('id')
+    outcome = obs.get('outcome')
 
     if not _id:
-        logger.warning('Returning error: no id provided')
+        logger.warning('No id provided in request')
         return jsonify({'error': 'id is required'}), 400
-    
+
+    # Check if the ID exists in the database
     if not Prediction.select().where(Prediction.id == _id).exists():
-        logger.warning(f'Returning error: id {_id} does not exist in the database')
+        logger.warning('ID %s does not exist in the database', _id)
         return jsonify({'error': 'id does not exist'}), 400
-    
+
+    # Update true class
     p = Prediction.get(Prediction.id == _id)
     p.true_class = outcome
     p.save()
-    logger.info('Updated: %s', model_to_dict(p))
+    logger.info('Updated true class for ID %s', _id)
 
-    response = {'id': _id, 'outcome': outcome,'predicted_outcome': p.pred_class}
+    response = {'id': _id, 'outcome': outcome, 'predicted_outcome': p.pred_class}
     return jsonify(response)
 
-
+# Endpoint to list database contents
 @app.route('/list-db-contents')
 def list_db_contents():
-    return jsonify([
-        model_to_dict(obs) for obs in Prediction.select()
-    ])
+    try:
+        data = [model_to_dict(obs) for obs in Prediction.select()]
+        logger.info('Current DB contents: %s', data)
+        return jsonify(data)
+    except Exception as e:
+        logger.error('Error fetching data from DB: %s', str(e))
+        return jsonify({'error': 'Failed to fetch data from DB'}), 500
+
+# Endpoint to verify database contents
+@app.route('/verify')
+def verify():
+    data = [model_to_dict(obs) for obs in Prediction.select()]
+    logger.info('Verifying DB contents: %s', data)
+    return jsonify(data)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', debug=True, port=8000)
