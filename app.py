@@ -96,9 +96,20 @@ def predict():
     response = {'id': _id, 'outcome': outcome}
 
     # Save prediction to database
-    p = Prediction(id=_id, observation=json.dumps(obs_dict), pred_class=outcome)
-    p.save()
-    logger.info('Saved prediction for ID %s', _id)
+    try:
+        p = Prediction(
+        observation_id=_id,
+        pred_class=outcome,
+        observation=request.data
+    )
+        p.save()
+    except:
+        error_msg = 'Could not save observation to DB'
+        logger.warning(error_msg)
+        response['error'] = error_msg
+        print(error_msg)
+        DB.rollback()
+    return jsonify(response)
 
     return jsonify(response)
 
